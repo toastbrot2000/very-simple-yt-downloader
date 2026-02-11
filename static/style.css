@@ -85,7 +85,6 @@ input[type="text"] {
   outline: none;
   transition:
     border-color var(--transition-speed);
-    background var(--transition-speed);
   box-sizing: border-box; /* Ensure padding doesn't affect width */
 }
 
