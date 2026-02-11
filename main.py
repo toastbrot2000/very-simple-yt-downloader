@@ -1,12 +1,10 @@
 import os
 import uuid
-import threading
 import logging
 from typing import Dict, Any
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Request
+from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import yt_dlp
@@ -41,9 +39,11 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # task_id -> { "status": "downloading"|"finished"|"error", "progress": int, "filename": str, "error": str }
 download_progress: Dict[str, Dict[str, Any]] = {}
 
+
 class DownloadRequest(BaseModel):
     url: str
     format_type: str  # "mp4" or "mp3"
+
 
 def progress_hook(d, task_id):
     if d['status'] == 'downloading':
@@ -52,7 +52,7 @@ def progress_hook(d, task_id):
             progress_val = float(p)
         except Exception:
             progress_val = 0
-            
+
         download_progress[task_id].update({
             "status": "downloading",
             "progress": progress_val,
@@ -68,6 +68,7 @@ def progress_hook(d, task_id):
             # Capture the absolute path of the downloaded file
             "filepath": d.get('filename')
         })
+
 
 def run_download(task_id: str, url: str, format_type: str):
     logger.info(f"Starting download for {url} as {format_type} (Task ID: {task_id})")
@@ -98,8 +99,6 @@ def run_download(task_id: str, url: str, format_type: str):
         download_progress[task_id] = {"status": "starting", "progress": 0}
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
-        
-        # Ensure it's marked as finished if hook didn't catch it
         if download_progress[task_id]["status"] != "finished":
              download_progress[task_id]["status"] = "finished"
              download_progress[task_id]["progress"] = 100

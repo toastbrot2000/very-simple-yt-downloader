@@ -1,4 +1,5 @@
 async function startDownload() {
+window.startDownload = startDownload;
   const urlInput = document.getElementById("urlInput");
   const url = urlInput.value.trim();
   const format = document.querySelector('input[name="format"]:checked').value;
