@@ -73,9 +73,21 @@ def progress_hook(d, task_id):
 def run_download(task_id: str, url: str, format_type: str):
     logger.info(f"Starting download for {url} as {format_type} (Task ID: {task_id})")
     
+    def postprocessor_hook(d):
+        if d['status'] == 'finished':
+            info = d.get('info_dict')
+            if info:
+                download_progress[task_id].update({
+                    "status": "finished",
+                    "progress": 100,
+                    "filename": info.get('filename', 'Unknown'),
+                    "filepath": info.get('filepath') or info.get('filename')
+                })
+
     ydl_opts = {
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'progress_hooks': [lambda d: progress_hook(d, task_id)],
+        'postprocessor_hooks': [postprocessor_hook],
         'quiet': True,
         'no_warnings': True,
     }
