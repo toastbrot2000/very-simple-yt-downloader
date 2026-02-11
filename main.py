@@ -6,6 +6,7 @@ from typing import Dict, Any
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import yt_dlp
 
@@ -14,6 +15,18 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="yt-dlp Web GUI")
+
+# Helper to remove file after download
+def cleanup_file(path: str, task_id: str = None):
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+            logger.info(f"Deleted temporary file: {path}")
+    except Exception as e:
+        logger.error(f"Error deleting file {path}: {e}")
+    
+    if task_id and task_id in download_progress:
+        del download_progress[task_id]
 
 # CORS (optional for local dev but good practice)
 app.add_middleware(
@@ -143,8 +156,7 @@ async def read_index():
     return FileResponse('static/index.html')
 
 @app.get("/api/download_file/{task_id}")
-async def download_file(task_id: str):
-    from fastapi.responses import FileResponse
+async def download_file(task_id: str, background_tasks: BackgroundTasks):
     
     if task_id not in download_progress:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -153,9 +165,14 @@ async def download_file(task_id: str):
     if task.get("status") != "finished" or not task.get("filepath"):
         raise HTTPException(status_code=400, detail="File not ready or failed")
     
-    filename = os.path.basename(task["filepath"])
+    file_path = task["filepath"]
+    filename = os.path.basename(file_path)
+    
+    # Schedule cleanup after response is sent
+    background_tasks.add_task(cleanup_file, file_path, task_id)
+
     return FileResponse(
-        task["filepath"], 
+        file_path, 
         media_type='application/octet-stream', 
         headers={"Content-Disposition": f"attachment; filename=\"{filename}\""}
     )
