@@ -38,7 +38,7 @@ async function startDownload() {
   progressBar.style.width = "0%";
 
   if (!url) {
-    showError("Please enter a valid YouTube URL");
+    showError("Please enter a valid video URL");
     return;
   }
 

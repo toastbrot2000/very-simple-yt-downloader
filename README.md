@@ -1,6 +1,6 @@
 # yt-dlp Web GUI
 
-A lightweight, stateless web interface for `yt-dlp`. Download YouTube videos as MP4 or extract audio as MP3 directly from your browser.
+A lightweight, stateless web interface for `yt-dl-webui`. Download videos as MP4 or extract audio as MP3 directly from your browser.
 
 ## Features
 
@@ -16,7 +16,7 @@ The easiest way to run the application is using Docker:
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/yourusername/yt-dlp-web-gui.git
+   git clone https://github.com/your-username/yt-dlp-web-gui.git
    cd yt-dlp-web-gui
    ```
 
@@ -44,11 +44,15 @@ If you prefer to run it without Docker, ensure you have `ffmpeg` installed on yo
 
 ## How it Works
 
-1. **Request:** The user submits a YouTube URL and selects a format (MP3/MP4).
+1. **Request:** The user submits a video URL and selects a format (MP3/MP4).
 2. **Download:** The server uses `yt-dlp` to download the content.
 3. **Processing:** If conversion or merging is needed, `ffmpeg` is invoked automatically.
 4. **Delivery:** Once ready, the frontend triggers a native browser download.
 5. **Cleanup:** The file is deleted from the server immediately after the download is initiated.
+
+## Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to get started.
 
 ## License
 
