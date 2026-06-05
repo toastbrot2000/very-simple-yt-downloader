@@ -1,5 +1,9 @@
+document.addEventListener("DOMContentLoaded", () => {
+  // Initialization if needed
+});
+
+// eslint-disable-next-line no-unused-vars
 async function startDownload() {
-window.startDownload = startDownload;
   const urlInput = document.getElementById("urlInput");
   const url = urlInput.value.trim();
   const format = document.querySelector('input[name="format"]:checked').value;
@@ -83,6 +87,10 @@ window.startDownload = startDownload;
           progressBar.style.width = percent + "%";
           percentage.textContent = Math.round(percent) + "%";
           statusMessage.textContent = `Downloading: ${progressData.filename || "..."}`;
+        } else if (progressData.status === "processing") {
+          progressBar.style.width = "100%";
+          percentage.textContent = "100%";
+          statusMessage.textContent = "Processing file (converting/merging)... Please wait.";
         } else if (progressData.status === "finished") {
           progressBar.style.width = "100%";
           percentage.textContent = "100%";
@@ -98,7 +106,6 @@ window.startDownload = startDownload;
           document.body.removeChild(link);
           
           resetButton();
-          // Removed alert to make it smoother
         } else if (progressData.status === "error") {
           clearInterval(interval);
           resetButton();
@@ -106,8 +113,10 @@ window.startDownload = startDownload;
         }
       } catch (err) {
         console.error(err);
-        // Don't stop polling immediately on one error, but maybe warn?
       }
     }, 1000);
   }
 }
+
+// Make global for onclick
+window.startDownload = startDownload;

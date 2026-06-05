@@ -1,0 +1,10 @@
+version: '3.8'
+
+services:
+  yt-dlp-web-gui:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./downloads:/app/downloads
+    restart: unless-stopped

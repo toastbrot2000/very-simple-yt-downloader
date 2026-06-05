@@ -1,7 +1,10 @@
 import os
 import uuid
 import logging
+import asyncio
+import time
 from typing import Dict, Any
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -14,7 +17,42 @@ import yt_dlp
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="yt-dlp Web GUI")
+# Cleanup task: Delete files older than 1 hour
+async def cleanup_loop():
+    while True:
+        try:
+            now = time.time()
+            for filename in os.listdir(DOWNLOAD_DIR):
+                filepath = os.path.join(DOWNLOAD_DIR, filename)
+                if os.path.isfile(filepath):
+                    # If file is older than 1 hour
+                    if now - os.path.getmtime(filepath) > 3600:
+                        os.remove(filepath)
+                        logger.info(f"Cleanup: Deleted stale file {filename}")
+            
+            # Also cleanup stale task progress entries (older than 1 hour)
+            stale_tasks = []
+            for tid, data in download_progress.items():
+                if data.get("timestamp") and now - data["timestamp"] > 3600:
+                    stale_tasks.append(tid)
+            
+            for tid in stale_tasks:
+                del download_progress[tid]
+                logger.info(f"Cleanup: Pruned stale task {tid}")
+
+        except Exception as e:
+            logger.error(f"Cleanup error: {e}")
+        
+        await asyncio.sleep(600) # Run every 10 minutes
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Start cleanup loop
+    asyncio.create_task(cleanup_loop())
+    yield
+    # Shutdown: Cleanup (optional)
+
+app = FastAPI(title="yt-dlp Web GUI", lifespan=lifespan)
 
 # Helper to remove file after download
 def cleanup_file(path: str, task_id: str = None):
@@ -49,7 +87,7 @@ os.makedirs(STATIC_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Store active downloads progress
-# task_id -> { "status": "downloading"|"finished"|"error", "progress": int, "filename": str, "error": str }
+# task_id -> { "status": "downloading"|"processing"|"finished"|"error", "progress": int, "filename": str, "filepath": str, "timestamp": float }
 download_progress: Dict[str, Dict[str, Any]] = {}
 
 
@@ -74,11 +112,11 @@ def progress_hook(d, task_id):
             "eta": d.get('_eta_str', 'N/A')
         })
     elif d['status'] == 'finished':
+        # Download is done, but post-processing might start
         download_progress[task_id].update({
-            "status": "finished",
+            "status": "processing",
             "progress": 100,
             "filename": d.get('filename', 'Unknown'),
-            # Capture the absolute path of the downloaded file
             "filepath": d.get('filename')
         })
 
@@ -91,7 +129,7 @@ def run_download(task_id: str, url: str, format_type: str):
             info = d.get('info_dict')
             if info:
                 download_progress[task_id].update({
-                    "status": "finished",
+                    "status": "processing",
                     "progress": 100,
                     "filename": info.get('filename', 'Unknown'),
                     "filepath": info.get('filepath') or info.get('filename')
@@ -121,7 +159,11 @@ def run_download(task_id: str, url: str, format_type: str):
         })
 
     try:
-        download_progress[task_id] = {"status": "starting", "progress": 0}
+        download_progress[task_id] = {
+            "status": "starting", 
+            "progress": 0,
+            "timestamp": time.time()
+        }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             
@@ -135,23 +177,28 @@ def run_download(task_id: str, url: str, format_type: str):
                     else:
                         filepath = ydl.prepare_filename(info)
                     
-                    # Handle post-processing extension changes (basic check)
+                    # Handle post-processing extension changes
                     if format_type == 'mp3' and filepath and not filepath.endswith('.mp3'):
                         filepath = os.path.splitext(filepath)[0] + '.mp3'
                         
                     task['filepath'] = filepath
                     task['filename'] = os.path.basename(filepath) if filepath else 'Unknown'
 
-        if download_progress[task_id]["status"] != "finished":
-             download_progress[task_id]["status"] = "finished"
-             download_progress[task_id]["progress"] = 100
+        # Set final status to finished ONLY after the context manager exits (all post-processing done)
+        if task_id in download_progress:
+            download_progress[task_id].update({
+                "status": "finished",
+                "progress": 100,
+                "timestamp": time.time() # Update timestamp so it survives 1 more hour
+            })
 
     except Exception as e:
         logger.error(f"Error downloading {url}: {str(e)}")
         download_progress[task_id] = {
             "status": "error",
             "progress": 0,
-            "error": str(e)
+            "error": str(e),
+            "timestamp": time.time()
         }
 
 @app.post("/api/download")
