@@ -1,4 +1,4 @@
-# yt-dlp Web GUI
+# very simple yt downloader
 
 A lightweight, stateless-ish web interface for `yt-dlp`. Download videos as MP4 or extract audio as MP3 directly from your browser.
 
