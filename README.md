@@ -1,6 +1,6 @@
 # yt-dlp Web GUI
 
-A lightweight, stateless web interface for `yt-dl-webui`. Download videos as MP4 or extract audio as MP3 directly from your browser.
+A lightweight, stateless web interface for `yt-dlp`. Download videos as MP4 or extract audio as MP3 directly from your browser.
 
 ## Features
 
@@ -22,7 +22,7 @@ The easiest way to run the application is using Docker:
 
 2. **Run with Docker Compose:**
    ```bash
-   docker-compose up -d
+   docker compose up -d
    ```
 
 3. **Access the Web UI:**
@@ -50,9 +50,26 @@ If you prefer to run it without Docker, ensure you have `ffmpeg` installed on yo
 4. **Delivery:** Once ready, the frontend triggers a native browser download.
 5. **Cleanup:** The file is deleted from the server immediately after the download is initiated.
 
-## Contributing
+## Roadmap
 
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to get started.
+Future goals for this project include:
+
+- [ ] **Playlist Support:** Ability to download entire YouTube playlists.
+- [ ] **Advanced Format Selection:** UI to choose specific video/audio codecs.
+- [ ] **Authentication:** Optional basic auth for private deployments.
+- [ ] **Dark Mode / Themes:** Customizable UI aesthetics.
+- [ ] **Mobile App PWA:** Make the web interface a fully installable Progressive Web App.
+- [ ] **Download History:** Optional local-storage based history (keeping the server stateless).
+
+## Acknowledgements & Licensing
+
+This project is a wrapper around several incredible open-source tools:
+
+- **[yt-dlp](https://github.com/yt-dlp/yt-dlp):** Licensed under The Unlicense. The engine that makes downloading possible.
+- **[FastAPI](https://fastapi.tiangolo.com/):** Licensed under MIT. The high-performance backend.
+- **[FFmpeg](https://ffmpeg.org/):** Licensed under LGPL/GPL. Used for media conversion and merging. (Note: This project does not distribute FFmpeg; it must be installed on the host or used via the provided Docker image).
+- **[Font Awesome](https://fontawesome.com/):** Icons used under the CC BY 4.0 license.
+- **[Outfit Font](https://fonts.google.com/specimen/Outfit):** Used under the Open Font License.
 
 ## License
 
