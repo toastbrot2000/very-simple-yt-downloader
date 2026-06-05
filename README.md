@@ -4,7 +4,7 @@ A lightweight, stateless web interface for `yt-dlp`. Download videos as MP4 or e
 
 ## Features
 
-- **Stateless Design:** Files are served directly to your browser and then deleted from the server.
+- **Stateless-ish Design:** Files are served directly to your browser and then deleted from the server.
 - **Background Cleanup:** Automatic garbage collection for abandoned or stale downloads.
 - **Rich UI:** Modern, responsive interface with real-time progress tracking.
 - **Docker Ready:** Run instantly with a single command via Docker Hub.
