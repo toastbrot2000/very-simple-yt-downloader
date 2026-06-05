@@ -3,6 +3,7 @@ import uuid
 import logging
 import asyncio
 import time
+import urllib.parse
 from typing import Dict, Any
 from contextlib import asynccontextmanager
 
@@ -94,20 +95,28 @@ download_progress: Dict[str, Dict[str, Any]] = {}
 class DownloadRequest(BaseModel):
     url: str
     format_type: str  # "mp4" or "mp3"
+    quality: str = "best" # "best", "1080", "720", "480"
 
 
 def progress_hook(d, task_id):
     if d['status'] == 'downloading':
-        try:
-            p = d.get('_percent_str', '0%').replace('%', '')
-            progress_val = float(p)
-        except Exception:
-            progress_val = 0
+        # Use total_bytes or downloaded_bytes for more accurate percentage if percent_str is unreliable
+        downloaded = d.get('downloaded_bytes', 0)
+        total = d.get('total_bytes') or d.get('total_bytes_estimate')
+        
+        if total:
+            progress_val = (downloaded / total) * 100
+        else:
+            try:
+                p = d.get('_percent_str', '0%').replace('%', '').strip()
+                progress_val = float(p)
+            except Exception:
+                progress_val = 0
 
         download_progress[task_id].update({
             "status": "downloading",
             "progress": progress_val,
-            "filename": d.get('filename', 'Unknown'),
+            "filename": os.path.basename(d.get('filename', 'Unknown')),
             "speed": d.get('_speed_str', 'N/A'),
             "eta": d.get('_eta_str', 'N/A')
         })
@@ -116,9 +125,10 @@ def progress_hook(d, task_id):
         download_progress[task_id].update({
             "status": "processing",
             "progress": 100,
-            "filename": d.get('filename', 'Unknown'),
+            "filename": os.path.basename(d.get('filename', 'Unknown')),
             "filepath": d.get('filename')
         })
+        logger.info(f"Task {task_id} download finished, now processing.")
 
 
 def run_download(task_id: str, url: str, format_type: str):
@@ -231,13 +241,18 @@ async def download_file(task_id: str, background_tasks: BackgroundTasks):
     file_path = task["filepath"]
     filename = os.path.basename(file_path)
     
+    # URL-encode the filename for the Content-Disposition header (RFC 5987)
+    encoded_filename = urllib.parse.quote(filename)
+    
     # Schedule cleanup after response is sent
     background_tasks.add_task(cleanup_file, file_path, task_id)
 
     return FileResponse(
         file_path, 
         media_type='application/octet-stream', 
-        headers={"Content-Disposition": f"attachment; filename=\"{filename}\""}
+        headers={
+            "Content-Disposition": f"attachment; filename=\"{encoded_filename}\"; filename*=UTF-8''{encoded_filename}"
+        }
     )
 
 if __name__ == "__main__":

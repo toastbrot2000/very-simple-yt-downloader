@@ -74,6 +74,9 @@ async function startDownload() {
   }
 
   async function pollProgress(taskId) {
+    const progressBox = document.getElementById("progressBox");
+    const processingBox = document.getElementById("processingBox");
+
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/progress/${taskId}`);
@@ -83,32 +86,35 @@ async function startDownload() {
 
         // Update UI
         if (progressData.status === "downloading") {
+          progressBox.classList.remove("hidden");
+          processingBox.classList.add("hidden");
+          
           const percent = progressData.progress || 0;
           progressBar.style.width = percent + "%";
           percentage.textContent = Math.round(percent) + "%";
           statusMessage.textContent = `Downloading: ${progressData.filename || "..."}`;
         } else if (progressData.status === "processing") {
-          progressBar.style.width = "100%";
-          percentage.textContent = "100%";
-          statusMessage.textContent = "Processing file (converting/merging)... Please wait.";
+          // Switch from Progress Bar to Spinner
+          progressBox.classList.add("hidden");
+          processingBox.classList.remove("hidden");
         } else if (progressData.status === "finished") {
-          progressBar.style.width = "100%";
-          percentage.textContent = "100%";
-          statusMessage.textContent = "Download Complete! Starting file download...";
+          processingBox.classList.add("hidden");
           clearInterval(interval);
           
           // Trigger file download using a temporary anchor tag
           const link = document.createElement('a');
           link.href = `/api/download_file/${taskId}`;
-          link.download = ''; // Browser will infer filename from Content-Disposition
+          link.download = ''; 
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
           
           resetButton();
+          statusContainer.classList.add("hidden");
         } else if (progressData.status === "error") {
           clearInterval(interval);
           resetButton();
+          statusContainer.classList.add("hidden");
           showError(progressData.error || "Unknown error occurred");
         }
       } catch (err) {

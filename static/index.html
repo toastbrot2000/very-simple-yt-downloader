@@ -52,12 +52,21 @@
         </button>
 
         <div id="statusContainer" class="status-container hidden">
-          <div class="progress-bar-bg">
-            <div class="progress-bar-fill" id="progressBar"></div>
+          <div id="progressBox">
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill" id="progressBar"></div>
+            </div>
+            <div class="status-text">
+              <span id="statusMessage">Initializing...</span>
+              <span id="percentage">0%</span>
+            </div>
           </div>
-          <div class="status-text">
-            <span id="statusMessage">Initializing...</span>
-            <span id="percentage">0%</span>
+          
+          <div id="processingBox" class="hidden">
+            <div class="processing-content">
+              <div class="spinner-large"></div>
+              <span id="processingMessage">Processing file (converting/merging)...</span>
+            </div>
           </div>
         </div>
 
