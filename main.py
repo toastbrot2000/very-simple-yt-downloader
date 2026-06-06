@@ -88,14 +88,23 @@ os.makedirs(STATIC_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Store active downloads progress
-# task_id -> { "status": "downloading"|"processing"|"finished"|"error", "progress": int, "filename": str, "filepath": str, "timestamp": float }
 download_progress: Dict[str, Dict[str, Any]] = {}
+
+# Cache of probed formats so repeated polls for the same URL don't hit the
+# source site again (cuts latency and bot-detection/rate-limit exposure).
+# url -> { "heights": list[int], "title": str, "timestamp": float }
+FORMAT_CACHE_TTL = 600  # seconds
+format_cache: Dict[str, Dict[str, Any]] = {}
 
 
 class DownloadRequest(BaseModel):
     url: str
     format_type: str  # "mp4" or "mp3"
-    quality: str = "best" # "best", "1080", "720", "480"
+    quality: str = "best" # "best", "2160", "1440", "1080", "720", "480"
+
+
+class FormatsRequest(BaseModel):
+    url: str
 
 
 def inspect_url(url: str):
@@ -123,6 +132,34 @@ def inspect_url(url: str):
 
     is_playlist_context = bool(qs.get("list")) or path.startswith("/playlist")
     return (has_video, is_playlist_context)
+
+
+def probe_heights(url: str):
+    """Extract metadata for a URL (no download) and return available video heights.
+
+    Returns (title, heights) where heights is a sorted-descending list of the
+    distinct vertical resolutions the source offers. Raises on extraction error.
+    """
+    opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'noplaylist': True,
+        'skip_download': True,
+    }
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+
+    # A playlist/mix URL yields entries; probe the first concrete video.
+    if info.get('entries'):
+        entries = [e for e in info['entries'] if e]
+        info = entries[0] if entries else info
+
+    heights = set()
+    for f in info.get('formats', []) or []:
+        if f.get('vcodec') and f.get('vcodec') != 'none' and f.get('height'):
+            heights.add(int(f['height']))
+
+    return info.get('title', 'Unknown'), sorted(heights, reverse=True)
 
 
 def progress_hook(d, task_id):
@@ -192,14 +229,15 @@ def run_download(task_id: str, url: str, format_type: str, quality: str = "best"
             }],
         })
     else:  # mp4
+        # result into an mp4 container regardless of source codec.
         if quality == "best":
             ydl_opts.update({
-                'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+                'format': 'bestvideo+bestaudio/best',
             })
         else:
-            # target height like 1080, 720, 480
+            # target height like 2160, 1440, 1080, 720, 480
             ydl_opts.update({
-                'format': f'bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<={quality}][ext=mp4]/best',
+                'format': f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]/best',
             })
         ydl_opts.update({
             'merge_output_format': 'mp4',
@@ -269,6 +307,31 @@ async def start_download(request: DownloadRequest, background_tasks: BackgroundT
             "downloaded for now. Full playlist support is coming later."
         )
     return response
+
+@app.post("/api/formats")
+async def get_formats(request: FormatsRequest):
+    url = (request.url or "").strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="No URL provided.")
+
+    # Serve from cache when fresh to avoid re-probing the source.
+    cached = format_cache.get(url)
+    if cached and time.time() - cached["timestamp"] < FORMAT_CACHE_TTL:
+        return {"title": cached["title"], "heights": cached["heights"]}
+
+    try:
+        # Extraction is blocking/network-bound; keep the event loop responsive.
+        title, heights = await asyncio.to_thread(probe_heights, url)
+    except Exception as e:
+        logger.error(f"Format probe failed for {url}: {e}")
+        raise HTTPException(
+            status_code=400,
+            detail="Couldn't read available qualities for this link.",
+        )
+
+    format_cache[url] = {"title": title, "heights": heights, "timestamp": time.time()}
+    return {"title": title, "heights": heights}
+
 
 @app.get("/api/progress/{task_id}")
 async def get_progress(task_id: str):
