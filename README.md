@@ -38,7 +38,7 @@ Access the UI at `http://localhost:8000`.
 
 ## Non-Technical Start (Docker Desktop)
 
-If you're not into self-hosting, you can still run this without touching the console or code using Docker Desktop: 
+If you're not into self-hosting, you can still run this without touching the terminal or code using Docker Desktop: 
 1. Install Docker Desktop: https://www.docker.com/products/docker-desktop/
 2. Run Docker Desktop and in the top search bar search for "toastbrotlf2000/yt-dlp-web-gui"
 <img width="986" height="431" alt="image" src="https://github.com/user-attachments/assets/3fbbdc7a-28bd-4f79-96c9-de7fa77dad4c" />
