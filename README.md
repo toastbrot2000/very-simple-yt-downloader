@@ -43,7 +43,6 @@ If you want to contribute or modify the code:
 1. **Clone the repository:**
    ```bash
    git clone https://github.com/toastbrot2000/very-simple-yt-downloader.git
-   cd yt-dlp-web-gui
    ```
 
 2. **Run with Docker Compose:**
