@@ -1,4 +1,3 @@
-// labels for known resolution buckets
 const HEIGHT_LABELS = {
   4320: "8K (4320p)",
   2160: "4K (2160p)",
@@ -15,10 +14,7 @@ function labelForHeight(h) {
   return HEIGHT_LABELS[h] || `${h}p`;
 }
 
-// survives a refresh so an in-flight download can be picked back up
 const TASK_STORAGE_KEY = "ytdl-active-task";
-
-// consecutive failed polls before giving up (~15s at 1s per poll)
 const MAX_POLL_FAILURES = 15;
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -33,21 +29,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const downloadBtn = document.getElementById("downloadBtn");
   const btnText = document.getElementById("btnText");
   const btnIcon = document.getElementById("btnIcon");
-  const btnSpinner = document.getElementById("btnSpinner");
-
-  const statusContainer = document.getElementById("statusContainer");
-  const progressBox = document.getElementById("progressBox");
-  const processingBox = document.getElementById("processingBox");
-  const processingMessage = document.getElementById("processingMessage");
-  const progressBar = document.getElementById("progressBar");
-  const statusMessage = document.getElementById("statusMessage");
-  const percentage = document.getElementById("percentage");
+  const btnFill = document.getElementById("btnFill");
   const errorContainer = document.getElementById("errorContainer");
   const errorMessage = document.getElementById("errorMessage");
   const noticeContainer = document.getElementById("noticeContainer");
   const noticeMessage = document.getElementById("noticeMessage");
 
-  // fallback options used when probing fails
   const defaultOptionsHtml = qualitySelect.innerHTML;
 
   let lastProbedUrl = null;
@@ -66,13 +53,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // swap the icon for a spinner while a probe is in flight
   function setProbing(probing) {
     qualityIcon.classList.toggle("hidden", probing);
     qualitySpinner.classList.toggle("hidden", !probing);
   }
 
-  // state is "valid", "invalid" or "hidden"; the probe doubles as a link validity check
   function setVideoInfo(state, text) {
     if (!videoInfo) return;
     if (state === "hidden") {
@@ -83,7 +68,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const icon = state === "valid" ? "fa-circle-check" : "fa-circle-exclamation";
     videoInfo.className = `video-info ${state}`;
     videoInfo.innerHTML = `<i class="fas ${icon}"></i><span class="title"></span>`;
-    videoInfo.querySelector(".title").textContent = text; // textContent avoids html injection
+    videoInfo.querySelector(".title").textContent = text;
   }
 
   function populateOptions(heights) {
@@ -94,7 +79,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     qualitySelect.innerHTML = html;
     qualitySelect.disabled = false;
-    // keep the previous choice if it still exists
     if ([...qualitySelect.options].some((o) => o.value === preserved)) {
       qualitySelect.value = preserved;
     }
@@ -104,7 +88,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!url || url === lastProbedUrl) return;
     lastProbedUrl = url;
 
-    // cancel any in-flight probe for an older url
     if (probeController) probeController.abort();
     const controller = new AbortController();
     probeController = controller;
@@ -124,20 +107,17 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!res.ok) throw new Error("probe failed");
       const data = await res.json();
 
-      // a resolved title confirms the link is a real, reachable video
       setVideoInfo("valid", data.title || "Video found");
 
       if (data.heights && data.heights.length) {
         populateOptions(data.heights);
       } else {
-        // extraction worked but exposed no heights, fall back to the static list
         qualitySelect.innerHTML = defaultOptionsHtml;
         qualitySelect.disabled = false;
       }
     } catch (err) {
       if (err.name === "AbortError") return;
-      // probe failed: restore the static list and flag that we couldn't verify the link
-      lastProbedUrl = null; // allow a retry on next change
+      lastProbedUrl = null;
       qualitySelect.innerHTML = defaultOptionsHtml;
       qualitySelect.disabled = false;
       setVideoInfo(
@@ -145,18 +125,15 @@ document.addEventListener("DOMContentLoaded", () => {
         "Couldn't verify this link. it may be private, removed, or not a supported video.",
       );
     } finally {
-      // only clear the spinner if a newer probe hasn't taken over
       if (probeController === controller) setProbing(false);
     }
   }
 
-  // keep the quality selector hidden until mp4 is chosen and a url is entered
   function updateQualityVisibility() {
     const url = urlInput.value.trim();
     const show = isMp4Selected() && url !== "";
     qualityGroup.classList.toggle("hidden", !show);
 
-    // reveal straight into the spinner for an unprobed url so it doesn't flash the default list
     if (show && url !== lastProbedUrl) {
       setSelectState(true, "Loading available qualities…");
       setProbing(true);
@@ -178,7 +155,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // change fires on blur/enter; the debounced input handler catches pastes
   urlInput.addEventListener("change", () => {
     updateQualityVisibility();
     maybeProbe();
@@ -189,9 +165,7 @@ document.addEventListener("DOMContentLoaded", () => {
     debounceTimer = setTimeout(maybeProbe, 700);
   });
 
-  // ---------------------------------------------------------------------
   // download flow
-  // ---------------------------------------------------------------------
 
   function showError(msg) {
     errorContainer.classList.remove("hidden");
@@ -203,21 +177,21 @@ document.addEventListener("DOMContentLoaded", () => {
     noticeMessage.textContent = msg;
   }
 
-  function setBusy() {
+  function setBusy(text) {
     downloadBtn.disabled = true;
-    btnText.textContent = "Processing...";
+    btnText.textContent = text || "Starting…";
     btnIcon.style.display = "none";
-    btnSpinner.style.display = "block";
+    btnFill.classList.add("indeterminate");
   }
 
   function resetButton() {
     downloadBtn.disabled = false;
     btnText.textContent = "Download";
     btnIcon.style.display = "inline-block";
-    btnSpinner.style.display = "none";
+    btnFill.classList.remove("indeterminate");
+    btnFill.style.width = "0%";
   }
 
-  // fastapi validation errors put an array of objects in detail
   function detailToMessage(detail, fallback) {
     if (typeof detail === "string") return detail;
     if (Array.isArray(detail)) {
@@ -227,10 +201,9 @@ document.addEventListener("DOMContentLoaded", () => {
     return fallback;
   }
 
-  function showSpinnerStatus(text) {
-    progressBox.classList.add("hidden");
-    processingBox.classList.remove("hidden");
-    processingMessage.textContent = text;
+  function showIndeterminate(buttonText) {
+    btnText.textContent = buttonText;
+    btnFill.classList.add("indeterminate");
   }
 
   function triggerFileDownload(taskId) {
@@ -245,7 +218,6 @@ document.addEventListener("DOMContentLoaded", () => {
   function finishTask() {
     sessionStorage.removeItem(TASK_STORAGE_KEY);
     resetButton();
-    statusContainer.classList.add("hidden");
   }
 
   function pollProgress(taskId) {
@@ -260,22 +232,18 @@ document.addEventListener("DOMContentLoaded", () => {
         const progressData = await res.json();
 
         if (progressData.status === "queued") {
-          showSpinnerStatus("Waiting in queue…");
+          showIndeterminate("Starting…");
         } else if (progressData.status === "starting") {
-          showSpinnerStatus("Starting download…");
+          showIndeterminate("Starting…");
         } else if (progressData.status === "downloading") {
-          progressBox.classList.remove("hidden");
-          processingBox.classList.add("hidden");
-
           const percent = progressData.progress || 0;
-          progressBar.style.width = percent + "%";
-          percentage.textContent = Math.round(percent) + "%";
-          statusMessage.textContent = `Downloading: ${progressData.filename || "..."}`;
+          btnText.textContent = `Downloading ${Math.round(percent)}%`;
+          btnFill.classList.remove("indeterminate");
+          btnFill.style.width = percent + "%";
         } else if (progressData.status === "processing") {
-          showSpinnerStatus("Processing file (converting / merging)…");
+          showIndeterminate("Converting…");
         } else if (progressData.status === "finished") {
           clearInterval(interval);
-          // trigger the file download via a temporary anchor
           triggerFileDownload(taskId);
           finishTask();
         } else if (progressData.status === "error") {
@@ -284,7 +252,6 @@ document.addEventListener("DOMContentLoaded", () => {
           showError(progressData.error || "Unknown error occurred");
         }
       } catch (err) {
-        // tolerate transient hiccups, but don't poll a dead task forever
         failures += 1;
         if (failures >= MAX_POLL_FAILURES) {
           clearInterval(interval);
@@ -303,8 +270,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     errorContainer.classList.add("hidden");
     noticeContainer.classList.add("hidden");
-    statusContainer.classList.add("hidden");
-    progressBar.style.width = "0%";
 
     if (!url) {
       showError("Please enter a valid video URL");
@@ -333,13 +298,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const taskId = data.task_id;
       sessionStorage.setItem(TASK_STORAGE_KEY, taskId);
 
-      // e.g. a single video pulled out of a playlist/mix
       if (data.notice) {
         showNotice(data.notice);
       }
 
-      statusContainer.classList.remove("hidden");
-      showSpinnerStatus("Waiting in queue…");
       pollProgress(taskId);
     } catch (error) {
       showError("Failed to start download: " + error.message);
@@ -349,7 +311,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   downloadBtn.addEventListener("click", startDownload);
 
-  // pick an in-flight download back up after a page refresh
   (async () => {
     const storedId = sessionStorage.getItem(TASK_STORAGE_KEY);
     if (!storedId) return;
@@ -357,7 +318,6 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       const res = await fetch(`/api/progress/${storedId}`);
       if (!res.ok) {
-        // unknown task (server restarted or already cleaned up); forget it
         sessionStorage.removeItem(TASK_STORAGE_KEY);
         return;
       }
@@ -370,14 +330,9 @@ document.addEventListener("DOMContentLoaded", () => {
         finishTask();
         showError(data.error || "Unknown error occurred");
       } else {
-        // still running: re-enter the progress UI
-        setBusy();
-        statusContainer.classList.remove("hidden");
-        showSpinnerStatus("Reconnecting…");
+        setBusy("Reconnecting…");
         pollProgress(storedId);
       }
-    } catch {
-      // server unreachable right now; keep the stored id for the next load
-    }
+    } catch {}
   })();
 });
