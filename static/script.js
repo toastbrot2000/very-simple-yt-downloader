@@ -15,6 +15,12 @@ function labelForHeight(h) {
   return HEIGHT_LABELS[h] || `${h}p`;
 }
 
+// survives a refresh so an in-flight download can be picked back up
+const TASK_STORAGE_KEY = "ytdl-active-task";
+
+// consecutive failed polls before giving up (~15s at 1s per poll)
+const MAX_POLL_FAILURES = 15;
+
 document.addEventListener("DOMContentLoaded", () => {
   const formatRadios = document.querySelectorAll('input[name="format"]');
   const qualityGroup = document.getElementById("qualityGroup");
@@ -23,6 +29,23 @@ document.addEventListener("DOMContentLoaded", () => {
   const qualitySpinner = document.getElementById("qualitySpinner");
   const videoInfo = document.getElementById("videoInfo");
   const urlInput = document.getElementById("urlInput");
+
+  const downloadBtn = document.getElementById("downloadBtn");
+  const btnText = document.getElementById("btnText");
+  const btnIcon = document.getElementById("btnIcon");
+  const btnSpinner = document.getElementById("btnSpinner");
+
+  const statusContainer = document.getElementById("statusContainer");
+  const progressBox = document.getElementById("progressBox");
+  const processingBox = document.getElementById("processingBox");
+  const processingMessage = document.getElementById("processingMessage");
+  const progressBar = document.getElementById("progressBar");
+  const statusMessage = document.getElementById("statusMessage");
+  const percentage = document.getElementById("percentage");
+  const errorContainer = document.getElementById("errorContainer");
+  const errorMessage = document.getElementById("errorMessage");
+  const noticeContainer = document.getElementById("noticeContainer");
+  const noticeMessage = document.getElementById("noticeMessage");
 
   // fallback options used when probing fails
   const defaultOptionsHtml = qualitySelect.innerHTML;
@@ -165,75 +188,10 @@ document.addEventListener("DOMContentLoaded", () => {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(maybeProbe, 700);
   });
-});
 
-// eslint-disable-next-line no-unused-vars
-async function startDownload() {
-  const urlInput = document.getElementById("urlInput");
-  const url = urlInput.value.trim();
-  const format = document.querySelector('input[name="format"]:checked').value;
-  const quality = document.getElementById("qualitySelect").value;
-
-  const downloadBtn = document.getElementById("downloadBtn");
-  const btnText = document.getElementById("btnText");
-  const btnIcon = document.getElementById("btnIcon");
-  const btnSpinner = document.getElementById("btnSpinner");
-
-  const statusContainer = document.getElementById("statusContainer");
-  const progressBar = document.getElementById("progressBar");
-  const statusMessage = document.getElementById("statusMessage");
-  const percentage = document.getElementById("percentage");
-  const errorContainer = document.getElementById("errorContainer");
-  const errorMessage = document.getElementById("errorMessage");
-  const noticeContainer = document.getElementById("noticeContainer");
-  const noticeMessage = document.getElementById("noticeMessage");
-
-  errorContainer.classList.add("hidden");
-  noticeContainer.classList.add("hidden");
-  statusContainer.classList.add("hidden");
-  progressBar.style.width = "0%";
-
-  if (!url) {
-    showError("Please enter a valid video URL");
-    return;
-  }
-
-  downloadBtn.disabled = true;
-  btnText.textContent = "Processing...";
-  btnIcon.style.display = "none";
-  btnSpinner.style.display = "block";
-
-  try {
-    const response = await fetch("/api/download", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ url, format_type: format, quality: quality }),
-    });
-
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      // fastapi puts validation/refusal messages in detail
-      showError(data.detail || `Request failed (status ${response.status})`);
-      resetButton();
-      return;
-    }
-
-    const taskId = data.task_id;
-
-    // e.g. a single video pulled out of a playlist/mix
-    if (data.notice) {
-      showNotice(data.notice);
-    }
-
-    statusContainer.classList.remove("hidden");
-    pollProgress(taskId);
-  } catch (error) {
-    showError("Failed to start download: " + error.message);
-    resetButton();
-  }
+  // ---------------------------------------------------------------------
+  // download flow
+  // ---------------------------------------------------------------------
 
   function showError(msg) {
     errorContainer.classList.remove("hidden");
@@ -245,6 +203,13 @@ async function startDownload() {
     noticeMessage.textContent = msg;
   }
 
+  function setBusy() {
+    downloadBtn.disabled = true;
+    btnText.textContent = "Processing...";
+    btnIcon.style.display = "none";
+    btnSpinner.style.display = "block";
+  }
+
   function resetButton() {
     downloadBtn.disabled = false;
     btnText.textContent = "Download";
@@ -252,55 +217,167 @@ async function startDownload() {
     btnSpinner.style.display = "none";
   }
 
-  async function pollProgress(taskId) {
-    const progressBox = document.getElementById("progressBox");
-    const processingBox = document.getElementById("processingBox");
+  // fastapi validation errors put an array of objects in detail
+  function detailToMessage(detail, fallback) {
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) {
+      const msgs = detail.map((d) => d && d.msg).filter(Boolean);
+      if (msgs.length) return msgs.join("; ");
+    }
+    return fallback;
+  }
+
+  function showSpinnerStatus(text) {
+    progressBox.classList.add("hidden");
+    processingBox.classList.remove("hidden");
+    processingMessage.textContent = text;
+  }
+
+  function triggerFileDownload(taskId) {
+    const link = document.createElement("a");
+    link.href = `/api/download_file/${taskId}`;
+    link.download = "";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  function finishTask() {
+    sessionStorage.removeItem(TASK_STORAGE_KEY);
+    resetButton();
+    statusContainer.classList.add("hidden");
+  }
+
+  function pollProgress(taskId) {
+    let failures = 0;
 
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/progress/${taskId}`);
-        if (!res.ok) throw new Error("Progress check failed");
+        if (!res.ok) throw new Error(`Progress check failed (${res.status})`);
+        failures = 0;
 
         const progressData = await res.json();
 
-        if (progressData.status === "downloading") {
+        if (progressData.status === "queued") {
+          showSpinnerStatus("Waiting in queue…");
+        } else if (progressData.status === "starting") {
+          showSpinnerStatus("Starting download…");
+        } else if (progressData.status === "downloading") {
           progressBox.classList.remove("hidden");
           processingBox.classList.add("hidden");
-          
+
           const percent = progressData.progress || 0;
           progressBar.style.width = percent + "%";
           percentage.textContent = Math.round(percent) + "%";
           statusMessage.textContent = `Downloading: ${progressData.filename || "..."}`;
         } else if (progressData.status === "processing") {
-          // switch from progress bar to spinner
-          progressBox.classList.add("hidden");
-          processingBox.classList.remove("hidden");
+          showSpinnerStatus("Processing file (converting / merging)…");
         } else if (progressData.status === "finished") {
-          processingBox.classList.add("hidden");
           clearInterval(interval);
-
           // trigger the file download via a temporary anchor
-          const link = document.createElement('a');
-          link.href = `/api/download_file/${taskId}`;
-          link.download = ''; 
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          
-          resetButton();
-          statusContainer.classList.add("hidden");
+          triggerFileDownload(taskId);
+          finishTask();
         } else if (progressData.status === "error") {
           clearInterval(interval);
-          resetButton();
-          statusContainer.classList.add("hidden");
+          finishTask();
           showError(progressData.error || "Unknown error occurred");
         }
       } catch (err) {
-        console.error(err);
+        // tolerate transient hiccups, but don't poll a dead task forever
+        failures += 1;
+        if (failures >= MAX_POLL_FAILURES) {
+          clearInterval(interval);
+          console.error(err);
+          finishTask();
+          showError("Lost connection to the server. The download may have been interrupted.");
+        }
       }
     }, 1000);
   }
-}
 
-// expose for the onclick handler
-window.startDownload = startDownload;
+  async function startDownload() {
+    const url = urlInput.value.trim();
+    const format = document.querySelector('input[name="format"]:checked').value;
+    const quality = qualitySelect.value;
+
+    errorContainer.classList.add("hidden");
+    noticeContainer.classList.add("hidden");
+    statusContainer.classList.add("hidden");
+    progressBar.style.width = "0%";
+
+    if (!url) {
+      showError("Please enter a valid video URL");
+      return;
+    }
+
+    setBusy();
+
+    try {
+      const response = await fetch("/api/download", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ url, format_type: format, quality: quality }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data.task_id) {
+        showError(detailToMessage(data.detail, `Request failed (status ${response.status})`));
+        resetButton();
+        return;
+      }
+
+      const taskId = data.task_id;
+      sessionStorage.setItem(TASK_STORAGE_KEY, taskId);
+
+      // e.g. a single video pulled out of a playlist/mix
+      if (data.notice) {
+        showNotice(data.notice);
+      }
+
+      statusContainer.classList.remove("hidden");
+      showSpinnerStatus("Waiting in queue…");
+      pollProgress(taskId);
+    } catch (error) {
+      showError("Failed to start download: " + error.message);
+      resetButton();
+    }
+  }
+
+  downloadBtn.addEventListener("click", startDownload);
+
+  // pick an in-flight download back up after a page refresh
+  (async () => {
+    const storedId = sessionStorage.getItem(TASK_STORAGE_KEY);
+    if (!storedId) return;
+
+    try {
+      const res = await fetch(`/api/progress/${storedId}`);
+      if (!res.ok) {
+        // unknown task (server restarted or already cleaned up); forget it
+        sessionStorage.removeItem(TASK_STORAGE_KEY);
+        return;
+      }
+      const data = await res.json();
+
+      if (data.status === "finished") {
+        triggerFileDownload(storedId);
+        finishTask();
+      } else if (data.status === "error") {
+        finishTask();
+        showError(data.error || "Unknown error occurred");
+      } else {
+        // still running: re-enter the progress UI
+        setBusy();
+        statusContainer.classList.remove("hidden");
+        showSpinnerStatus("Reconnecting…");
+        pollProgress(storedId);
+      }
+    } catch {
+      // server unreachable right now; keep the stored id for the next load
+    }
+  })();
+});
