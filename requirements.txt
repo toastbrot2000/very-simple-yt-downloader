@@ -1,12 +1,12 @@
-# Direct dependencies (edit these in requirements.in):
-#   fastapi>=0.136.3
-#   uvicorn>=0.49.0
-#   yt-dlp>=2026.3.17
-#   python-dotenv>=1.2.2
-#   requests>=2.34.2
+# Pinned dependency lockfile.
+# Direct dependencies: fastapi, uvicorn, yt-dlp, python-dotenv, requests
+# (requests isn't imported by the app; yt-dlp prefers it as its HTTP backend when present)
 #
-# Regenerate with:
-#   pip install -r requirements.txt && pip freeze > requirements.txt
+# To update: in a FRESH venv run
+#   pip install fastapi uvicorn yt-dlp python-dotenv requests
+#   pip freeze > requirements.txt
+# then re-add this header. A fresh venv keeps dev tools (flake8 etc.) out of the
+# freeze; setuptools/wheel are additionally pinned in the Dockerfile.
 
 annotated-doc==0.0.4
 annotated-types==0.7.0
