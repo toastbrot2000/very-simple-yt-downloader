@@ -229,18 +229,29 @@ def progress_hook(d, task_id):
         return
 
     if d['status'] == 'downloading':
-        # prefer byte counts over percent_str, which can be unreliable
         downloaded = d.get('downloaded_bytes', 0)
         total = d.get('total_bytes') or d.get('total_bytes_estimate')
+        completed = task.get('_completed_bytes', 0.0)
+        prev = task.get('_prev_downloaded', 0)
 
-        if total:
-            progress_val = (downloaded / total) * 100
+        # detect fragment boundary: yt-dlp resets downloaded_bytes between
+        # streams (e.g. video then audio for mp4)
+        if downloaded < prev:
+            completed += prev
+            task['_completed_bytes'] = completed
+
+        task['_prev_downloaded'] = downloaded
+
+        overall = completed + downloaded
+        overall_max = completed + (total or downloaded)
+
+        if overall_max:
+            progress_val = min(overall / overall_max * 100, 100)
         else:
-            try:
-                p = d.get('_percent_str', '0%').replace('%', '').strip()
-                progress_val = float(p)
-            except Exception:
-                progress_val = 0
+            progress_val = 0
+
+        # never drop backwards (fragment boundaries would otherwise regress)
+        progress_val = max(progress_val, task.get('progress', 0))
 
         task.update({
             "status": "downloading",
@@ -248,18 +259,14 @@ def progress_hook(d, task_id):
             "filename": os.path.basename(d.get('filename', 'Unknown')),
             "speed": d.get('_speed_str', 'N/A'),
             "eta": d.get('_eta_str', 'N/A'),
-            # keep the task alive in the stale-task sweep while it progresses
             "timestamp": time.time()
         })
     elif d['status'] == 'finished':
-        # download done, post-processing may still run
-        task.update({
-            "status": "processing",
-            "progress": 100,
-            "filename": os.path.basename(d.get('filename', 'Unknown')),
-            "filepath": d.get('filename'),
-            "timestamp": time.time()
-        })
+        prev = task.get('_prev_downloaded', 0)
+        task['_completed_bytes'] = task.get('_completed_bytes', 0.0) + prev
+        task['_prev_downloaded'] = 0
+        task['status'] = 'processing'
+        task['timestamp'] = time.time()
         logger.info(f"Task {task_id} download finished, now processing.")
 
 
