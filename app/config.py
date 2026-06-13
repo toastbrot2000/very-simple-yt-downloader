@@ -1,7 +1,6 @@
 """Environment-driven configuration and shared constants."""
 
 import os
-import sys
 
 from dotenv import load_dotenv
 
@@ -18,7 +17,6 @@ FILE_TTL_SECONDS = int(os.getenv("FILE_TTL_MINUTES", "60")) * 60
 # optional comma-separated host allowlist (DNS-rebinding protection)
 ALLOWED_HOSTS = [h.strip() for h in os.getenv("ALLOWED_HOSTS", "").split(",") if h.strip()]
 
-# when frozen by PyInstaller, bundled assets live in sys._MEIPASS
 BASE_DIR = os.getcwd()
 
 DOWNLOAD_DIR = os.path.join(os.getcwd(), "downloads")

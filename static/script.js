@@ -385,8 +385,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  
-
   downloadBtn.addEventListener("click", startDownload);
   cancelBtn.addEventListener("click", () => {
     if (!currentTaskId) return;
