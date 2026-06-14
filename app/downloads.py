@@ -44,7 +44,13 @@ def is_task_id(name: str) -> bool:
 
 
 def task_dir(task_id: str) -> str:
-    return os.path.join(DOWNLOAD_DIR, task_id)
+    if not is_task_id(task_id):
+        raise ValueError(f"Invalid task_id: {task_id}")
+    base_dir = os.path.realpath(DOWNLOAD_DIR)
+    candidate = os.path.realpath(os.path.join(base_dir, task_id))
+    if os.path.commonpath([base_dir, candidate]) != base_dir:
+        raise ValueError(f"Unsafe task path for task_id: {task_id}")
+    return candidate
 
 
 def cleanup_task(task_id: str):
