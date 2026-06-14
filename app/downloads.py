@@ -45,11 +45,12 @@ def is_task_id(name: str) -> bool:
 
 def task_dir(task_id: str) -> str:
     if not is_task_id(task_id):
-        raise ValueError(f"Invalid task_id: {task_id}")
-    base_dir = os.path.realpath(DOWNLOAD_DIR)
-    candidate = os.path.realpath(os.path.join(base_dir, task_id))
+        raise ValueError(f"Invalid task id: {task_id}")
+
+    base_dir = os.path.abspath(DOWNLOAD_DIR)
+    candidate = os.path.abspath(os.path.normpath(os.path.join(base_dir, task_id)))
     if os.path.commonpath([base_dir, candidate]) != base_dir:
-        raise ValueError(f"Unsafe task path for task_id: {task_id}")
+        raise ValueError(f"Task path escapes download directory: {task_id}")
     return candidate
 
 
@@ -59,6 +60,8 @@ def cleanup_task(task_id: str):
         if os.path.isdir(path):
             shutil.rmtree(path)
             logger.info(f"Deleted task dir for {task_id}")
+    except ValueError as e:
+        logger.warning(f"Skipping cleanup for invalid task id {task_id}: {e}")
     except Exception as e:
         logger.error(f"Error deleting task dir for {task_id}: {e}")
 
