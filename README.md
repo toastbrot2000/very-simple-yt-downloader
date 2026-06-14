@@ -20,10 +20,7 @@ A lightweight, stateless-ish web interface for `yt-dlp`. Download videos as MP4 
 ## Quick Start (Docker Hub)
 
 ```bash
-docker run -d \
-  -p 127.0.0.1:8000:8000 \
-  -v ./downloads:/app/downloads \
-  toastbrotlf2000/yt-dlp-web-gui:latest
+docker run -d -p 127.0.0.1:8000:8000 -v downloads:/app/downloads toastbrotlf2000/yt-dlp-web-gui:latest
 ```
 
 Or with Docker Compose. Create a `docker-compose.yml`:
