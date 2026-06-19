@@ -23,7 +23,7 @@ pydantic_core==2.46.4
 python-dotenv==1.2.2
 requests==2.34.2
 setuptools==82.0.1
-starlette==1.3.0
+starlette==1.3.1
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 urllib3==2.7.0
