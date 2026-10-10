@@ -41,7 +41,7 @@ jobs:
   nightly:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Get latest yt-dlp version from PyPI
         id: ytdlp
@@ -89,7 +89,7 @@ jobs:
 
       - name: Set up Python
         if: steps.compare.outputs.build_needed == 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.14"
 
@@ -116,11 +116,11 @@ jobs:
 
       - name: Set up Docker Buildx
         if: steps.compare.outputs.build_needed == 'true'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
         if: steps.compare.outputs.build_needed == 'true'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -128,14 +128,14 @@ jobs:
 
       - name: Log in to Docker Hub
         if: steps.compare.outputs.build_needed == 'true'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push
         if: steps.compare.outputs.build_needed == 'true'
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
