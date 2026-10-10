@@ -4,11 +4,21 @@ on:
   schedule:
     - cron: "0 2 * * *"  # daily at 02:00 UTC
   workflow_dispatch:  # manual trigger
+    inputs:
+      force_build:
+        description: "Rebuild and push the image even if yt-dlp is already up to date"
+        type: boolean
+        default: false
 
 permissions:
   # write needed: the workflow commits the yt-dlp version bump back to main
   contents: write
   packages: write
+
+defaults:
+  run:
+    # explicit bash adds -o pipefail, so a failed curl can't hide behind jq
+    shell: bash
 
 jobs:
   nightly:
@@ -23,7 +33,12 @@ jobs:
           # installable via pip, which would break the image build. PyPI also uses
           # the same normalized version format as requirements.txt (2026.3.17,
           # not the zero-padded git tag 2026.03.17).
-          LATEST=$(curl -s https://pypi.org/pypi/yt-dlp/json | jq -r '.info.version')
+          LATEST=$(curl -fsS https://pypi.org/pypi/yt-dlp/json | jq -er '.info.version')
+          # never write an empty or garbage version into requirements.txt
+          if [[ ! "$LATEST" =~ ^[0-9]+(\.[0-9]+)+$ ]]; then
+            echo "::error::Unexpected yt-dlp version from PyPI: '$LATEST'"
+            exit 1
+          fi
           echo "latest=$LATEST" >> $GITHUB_OUTPUT
 
       - name: Get current yt-dlp version from requirements.txt
@@ -37,27 +52,28 @@ jobs:
         run: |
           if [ "${{ steps.ytdlp.outputs.latest }}" != "${{ steps.current.outputs.current }}" ]; then
             echo "update_needed=true" >> $GITHUB_OUTPUT
+            echo "build_needed=true" >> $GITHUB_OUTPUT
             echo "New yt-dlp version available: ${{ steps.ytdlp.outputs.latest }} (current: ${{ steps.current.outputs.current }})"
           else
             echo "update_needed=false" >> $GITHUB_OUTPUT
+            echo "build_needed=${{ inputs.force_build == true }}" >> $GITHUB_OUTPUT
             echo "yt-dlp is up to date (${{ steps.current.outputs.current }})"
           fi
 
+      # Only edit the file here. It gets committed after the image is pushed, so a
+      # failed build leaves main untouched and the next run tries again instead of
+      # seeing "up to date" and skipping the build forever.
       - name: Update requirements.txt
         if: steps.compare.outputs.update_needed == 'true'
         run: |
           sed -i "s/^yt-dlp==.*/yt-dlp==${{ steps.ytdlp.outputs.latest }}/" requirements.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -am "chore: update yt-dlp to ${{ steps.ytdlp.outputs.latest }}"
-          git push
 
       - name: Set up Docker Buildx
-        if: steps.compare.outputs.update_needed == 'true'
+        if: steps.compare.outputs.build_needed == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
-        if: steps.compare.outputs.update_needed == 'true'
+        if: steps.compare.outputs.build_needed == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -65,14 +81,14 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Log in to Docker Hub
-        if: steps.compare.outputs.update_needed == 'true'
+        if: steps.compare.outputs.build_needed == 'true'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push
-        if: steps.compare.outputs.update_needed == 'true'
+        if: steps.compare.outputs.build_needed == 'true'
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -84,3 +100,11 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/yt-dlp-web-gui:${{ steps.ytdlp.outputs.latest }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Commit version bump
+        if: steps.compare.outputs.update_needed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore: update yt-dlp to ${{ steps.ytdlp.outputs.latest }}"
+          git push
