@@ -1,0 +1,12 @@
+version: 2
+updates:
+  # keeps the workflow actions current (e.g. off deprecated Node runtimes).
+  # pip/npm are left to dependabot security updates + the weekly pip-audit,
+  # and yt-dlp is bumped by the nightly workflow.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
