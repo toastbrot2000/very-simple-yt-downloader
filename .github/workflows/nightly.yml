@@ -2,7 +2,19 @@ name: Nightly Build
 
 on:
   schedule:
-    - cron: "0 2 * * *"  # daily at 02:00 UTC
+    - cron: "0 2 * * *"  # daily at 02:00 UTC: check for a new yt-dlp
+    - cron: "0 3 * * 1"  # Mondays 03:00 UTC: uncached rebuild for base image / ffmpeg security fixes
+  push:
+    # rebuild when a merge changes what goes into the image (e.g. dependabot bumps),
+    # otherwise those fixes only ship with the next yt-dlp release. The bot's own
+    # yt-dlp bump commit is pushed with GITHUB_TOKEN, which doesn't re-trigger this.
+    branches: [main]
+    paths:
+      - requirements.txt
+      - Dockerfile
+      - main.py
+      - app/**
+      - static/**
   workflow_dispatch:  # manual trigger
     inputs:
       force_build:
@@ -14,6 +26,11 @@ permissions:
   # write needed: the workflow commits the yt-dlp version bump back to main
   contents: write
   packages: write
+
+concurrency:
+  # two runs must not race on committing the requirements.txt bump
+  group: nightly
+  cancel-in-progress: false
 
 defaults:
   run:
@@ -56,9 +73,11 @@ jobs:
             echo "New yt-dlp version available: ${{ steps.ytdlp.outputs.latest }} (current: ${{ steps.current.outputs.current }})"
           else
             echo "update_needed=false" >> $GITHUB_OUTPUT
-            echo "build_needed=${{ inputs.force_build == true }}" >> $GITHUB_OUTPUT
+            echo "build_needed=${{ github.event_name == 'push' || github.event.schedule == '0 3 * * 1' || inputs.force_build == true }}" >> $GITHUB_OUTPUT
             echo "yt-dlp is up to date (${{ steps.current.outputs.current }})"
           fi
+          # the cached `apk add ffmpeg` layer would otherwise never pick up alpine fixes
+          echo "no_cache=${{ github.event.schedule == '0 3 * * 1' || inputs.force_build == true }}" >> $GITHUB_OUTPUT
 
       # Only edit the file here. It gets committed after the image is pushed, so a
       # failed build leaves main untouched and the next run tries again instead of
@@ -67,6 +86,33 @@ jobs:
         if: steps.compare.outputs.update_needed == 'true'
         run: |
           sed -i "s/^yt-dlp==.*/yt-dlp==${{ steps.ytdlp.outputs.latest }}/" requirements.txt
+
+      - name: Set up Python
+        if: steps.compare.outputs.build_needed == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      # bot commits don't trigger tests.yml, so this is the only test run a yt-dlp
+      # bump gets before it lands on :latest
+      - name: Run tests
+        if: steps.compare.outputs.build_needed == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install --group dev
+          pytest
+
+      - name: Check Docker Hub credentials
+        if: steps.compare.outputs.build_needed == 'true'
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "::error::Repo secrets DOCKERHUB_USERNAME / DOCKERHUB_TOKEN are missing (Settings > Secrets and variables > Actions)"
+            exit 1
+          fi
 
       - name: Set up Docker Buildx
         if: steps.compare.outputs.build_needed == 'true'
@@ -93,6 +139,8 @@ jobs:
         with:
           context: .
           push: true
+          pull: true
+          no-cache: ${{ steps.compare.outputs.no_cache == 'true' }}
           tags: |
             ghcr.io/${{ github.repository_owner }}/yt-dlp-web-gui:latest
             ghcr.io/${{ github.repository_owner }}/yt-dlp-web-gui:${{ steps.ytdlp.outputs.latest }}
