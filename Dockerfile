@@ -1,6 +1,9 @@
-# pin the python minor too: nightly rebuilds must not silently jump
-# to a new python release and break wheel availability on alpine
-FROM python:3.14-alpine3.24
+# pin the python minor: nightly rebuilds must not silently jump to a new
+# python release and break wheel availability on alpine. alpine itself floats
+# on purpose: ffmpeg and deno come from its community repo, which only gets
+# fixes until the next alpine release (~6 months), so the weekly uncached
+# rebuild has to move to the new release to keep them patched.
+FROM python:3.14-alpine
 
 # Alpine's ffmpeg is musl-native, apk-maintained, and small (no Debian GUI tree).
 # Provides both ffmpeg and ffprobe, used by yt-dlp's FFmpeg postprocessors.
