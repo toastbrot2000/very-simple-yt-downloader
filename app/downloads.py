@@ -63,9 +63,11 @@ def task_dir(task_id: str) -> str:
     if not is_task_id(task_id):
         raise ValueError(f"Invalid task id: {task_id}")
 
-    base_dir = os.path.abspath(DOWNLOAD_DIR)
-    candidate = os.path.abspath(os.path.normpath(os.path.join(base_dir, task_id)))
-    if os.path.commonpath([base_dir, candidate]) != base_dir:
+    base_dir = os.path.realpath(DOWNLOAD_DIR)
+    # normalize + prefix check is the containment guard codeql recognizes
+    # (commonpath and the uuid check above aren't seen as sanitizers)
+    candidate = os.path.realpath(os.path.join(base_dir, task_id))
+    if not candidate.startswith(base_dir + os.sep):
         raise ValueError(f"Task path escapes download directory: {task_id}")
     return candidate
 
