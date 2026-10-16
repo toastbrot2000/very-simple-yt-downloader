@@ -109,8 +109,12 @@ document.addEventListener("DOMContentLoaded", () => {
         signal: controller.signal,
       });
 
-      if (!res.ok) throw new Error("probe failed");
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const err = new Error("probe failed");
+        err.detail = typeof data.detail === "string" ? data.detail : null;
+        throw err;
+      }
 
       setVideoInfo("valid", data.title || "Video found");
 
@@ -127,7 +131,8 @@ document.addEventListener("DOMContentLoaded", () => {
       qualitySelect.disabled = false;
       setVideoInfo(
         "invalid",
-        "Couldn't verify this link. it may be private, removed, or not a supported video.",
+        err.detail ||
+          "Couldn't verify this link. it may be private, removed, or not a supported video.",
       );
     } finally {
       if (probeController === controller) setProbing(false);

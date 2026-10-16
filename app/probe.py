@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 import yt_dlp
 
-from app.config import ALLOWED_EXTRACTORS
+from app.config import ALLOWED_EXTRACTORS, COOKIE_JAR
 
 # cache probed formats so repeated polls for a url don't re-hit the source site
 FORMAT_CACHE_TTL = 600
@@ -49,6 +49,8 @@ def probe_heights(url: str):
         'socket_timeout': 8,
         'allowed_extractors': ALLOWED_EXTRACTORS,
     }
+    if COOKIE_JAR:
+        opts['cookiefile'] = COOKIE_JAR
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
 

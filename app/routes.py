@@ -8,6 +8,7 @@ import time
 import urllib.parse
 import uuid
 
+import yt_dlp
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import FileResponse
 
@@ -19,6 +20,7 @@ from app.downloads import (
     cancel_events,
     cleanup_task,
     download_progress,
+    error_message,
     run_download,
 )
 from app.schemas import DownloadRequest, FormatsRequest
@@ -95,10 +97,11 @@ async def get_formats(request: FormatsRequest):
         title, heights = await asyncio.to_thread(probe.probe_heights, url)
     except Exception as e:
         logger.error(f"Format probe failed for {url}: {e}")
-        raise HTTPException(
-            status_code=400,
-            detail="Couldn't read available qualities for this link.",
-        )
+        if isinstance(e, yt_dlp.utils.DownloadError):
+            detail = error_message(e)
+        else:
+            detail = "Couldn't read available qualities for this link."
+        raise HTTPException(status_code=400, detail=detail)
 
     probe.cache_formats(url, title, heights)
     return {"title": title, "heights": heights}
