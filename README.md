@@ -95,7 +95,7 @@ All settings are environment variables. Copy `.env.example` to `.env` and adjust
 
 ## Nightly Builds
 
-A GitHub Actions workflow checks daily for new yt-dlp releases. When a new version is found, it automatically publishes a nightly image to GHCR (`ghcr.io/toastbrot2000/yt-dlp-web-gui`) and, when the `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` repo secrets are set, to Docker Hub. You can automatically check for updates using Watchtower / Keel or similar.
+A GitHub Actions workflow checks daily for new yt-dlp releases. When a new version is found, it automatically publishes a nightly image to GHCR (`ghcr.io/toastbrot2000/yt-dlp-web-gui`) and, when the `DOCKERHUB_USERNAME`/`DOCKERHUB_PAT` repo secrets are set, to Docker Hub. You can automatically check for updates using Watchtower / Keel or similar.
 
 ## Exposing to your LAN
 
