@@ -50,24 +50,35 @@ jobs:
           # installable via pip, which would break the image build. PyPI also uses
           # the same normalized version format as requirements.txt (2026.3.17,
           # not the zero-padded git tag 2026.03.17).
-          LATEST=$(curl -fsS https://pypi.org/pypi/yt-dlp/json | jq -er '.info.version')
+          META=$(curl -fsS https://pypi.org/pypi/yt-dlp/json)
+          LATEST=$(jq -er '.info.version' <<< "$META")
+          # the youtube solver scripts must match the yt-dlp release; take the
+          # version yt-dlp itself pins in its "default" extra
+          EJS=$(jq -er '[.info.requires_dist[] | select(test("^yt-dlp-ejs==.*extra == \"default\""))][0]
+            | capture("==(?<v>[^;[:space:]]+)").v' <<< "$META")
           # never write an empty or garbage version into requirements.txt
-          if [[ ! "$LATEST" =~ ^[0-9]+(\.[0-9]+)+$ ]]; then
-            echo "::error::Unexpected yt-dlp version from PyPI: '$LATEST'"
-            exit 1
-          fi
+          for V in "$LATEST" "$EJS"; do
+            if [[ ! "$V" =~ ^[0-9]+(\.[0-9]+)+$ ]]; then
+              echo "::error::Unexpected version from PyPI: '$V'"
+              exit 1
+            fi
+          done
           echo "latest=$LATEST" >> $GITHUB_OUTPUT
+          echo "ejs=$EJS" >> $GITHUB_OUTPUT
 
       - name: Get current yt-dlp version from requirements.txt
         id: current
         run: |
           CURRENT=$(grep '^yt-dlp==' requirements.txt | sed 's/yt-dlp==//')
+          CURRENT_EJS=$(grep '^yt-dlp-ejs==' requirements.txt | sed 's/yt-dlp-ejs==//')
           echo "current=$CURRENT" >> $GITHUB_OUTPUT
+          echo "ejs=$CURRENT_EJS" >> $GITHUB_OUTPUT
 
       - name: Compare versions
         id: compare
         run: |
-          if [ "${{ steps.ytdlp.outputs.latest }}" != "${{ steps.current.outputs.current }}" ]; then
+          if [ "${{ steps.ytdlp.outputs.latest }}" != "${{ steps.current.outputs.current }}" ] ||
+             [ "${{ steps.ytdlp.outputs.ejs }}" != "${{ steps.current.outputs.ejs }}" ]; then
             echo "update_needed=true" >> $GITHUB_OUTPUT
             echo "build_needed=true" >> $GITHUB_OUTPUT
             echo "New yt-dlp version available: ${{ steps.ytdlp.outputs.latest }} (current: ${{ steps.current.outputs.current }})"
@@ -86,6 +97,7 @@ jobs:
         if: steps.compare.outputs.update_needed == 'true'
         run: |
           sed -i "s/^yt-dlp==.*/yt-dlp==${{ steps.ytdlp.outputs.latest }}/" requirements.txt
+          sed -i "s/^yt-dlp-ejs==.*/yt-dlp-ejs==${{ steps.ytdlp.outputs.ejs }}/" requirements.txt
 
       - name: Set up Python
         if: steps.compare.outputs.build_needed == 'true'
@@ -103,15 +115,32 @@ jobs:
           pip install --group dev
           pytest
 
-      - name: Check Docker Hub credentials
+      # GHCR always gets the image. Docker Hub only with credentials: a hard
+      # failure here used to block GHCR too, so no image shipped for months.
+      - name: Pick image tags
+        id: tags
         if: steps.compare.outputs.build_needed == 'true'
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          VERSION: ${{ steps.ytdlp.outputs.latest }}
         run: |
-          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
-            echo "::error::Repo secrets DOCKERHUB_USERNAME / DOCKERHUB_TOKEN are missing (Settings > Secrets and variables > Actions)"
-            exit 1
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          {
+            echo "tags<<EOF"
+            echo "ghcr.io/$OWNER/yt-dlp-web-gui:latest"
+            echo "ghcr.io/$OWNER/yt-dlp-web-gui:$VERSION"
+            if [ -n "$DOCKERHUB_USERNAME" ] && [ -n "$DOCKERHUB_TOKEN" ]; then
+              echo "$DOCKERHUB_USERNAME/yt-dlp-web-gui:latest"
+              echo "$DOCKERHUB_USERNAME/yt-dlp-web-gui:$VERSION"
+            fi
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+          if [ -n "$DOCKERHUB_USERNAME" ] && [ -n "$DOCKERHUB_TOKEN" ]; then
+            echo "dockerhub=true" >> $GITHUB_OUTPUT
+          else
+            echo "dockerhub=false" >> $GITHUB_OUTPUT
+            echo "::warning::Repo secrets DOCKERHUB_USERNAME / DOCKERHUB_TOKEN are missing (Settings > Secrets and variables > Actions); pushing to GHCR only, Docker Hub stays stale"
           fi
 
       - name: Set up Docker Buildx
@@ -127,7 +156,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Log in to Docker Hub
-        if: steps.compare.outputs.build_needed == 'true'
+        if: steps.compare.outputs.build_needed == 'true' && steps.tags.outputs.dockerhub == 'true'
         uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -141,11 +170,7 @@ jobs:
           push: true
           pull: true
           no-cache: ${{ steps.compare.outputs.no_cache == 'true' }}
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/yt-dlp-web-gui:latest
-            ghcr.io/${{ github.repository_owner }}/yt-dlp-web-gui:${{ steps.ytdlp.outputs.latest }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/yt-dlp-web-gui:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/yt-dlp-web-gui:${{ steps.ytdlp.outputs.latest }}
+          tags: ${{ steps.tags.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -154,5 +179,5 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -am "chore: update yt-dlp to ${{ steps.ytdlp.outputs.latest }}"
+          git commit -am "chore: update yt-dlp to ${{ steps.ytdlp.outputs.latest }} (yt-dlp-ejs ${{ steps.ytdlp.outputs.ejs }})"
           git push

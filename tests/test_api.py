@@ -8,6 +8,7 @@ not yt-dlp.
 
 import time
 
+import yt_dlp
 from fastapi.testclient import TestClient
 
 from app import downloads
@@ -93,3 +94,32 @@ def test_progress_hides_internal_fields():
     assert body["status"] == "downloading"
     assert "filepath" not in body
     assert "_completed_bytes" not in body
+
+
+def test_probe_error_shows_extractor_message(monkeypatch):
+    def fail(url):
+        raise yt_dlp.utils.DownloadError("ERROR: [youtube] abc: Video unavailable")
+    monkeypatch.setattr("app.routes.probe.probe_heights", fail)
+    r = client.post("/api/formats", json={"url": "https://www.youtube.com/watch?v=abc"})
+    assert r.status_code == 400
+    assert r.json()["detail"] == "[youtube] abc: Video unavailable"
+
+
+def test_probe_bot_check_gets_readable_message(monkeypatch):
+    def fail(url):
+        raise yt_dlp.utils.DownloadError(
+            "ERROR: [youtube] abc: Sign in to confirm you’re not a bot. Use --cookies")
+    monkeypatch.setattr("app.routes.probe.probe_heights", fail)
+    r = client.post("/api/formats", json={"url": "https://www.youtube.com/watch?v=abc"})
+    assert r.status_code == 400
+    assert "COOKIES_FILE" in r.json()["detail"]
+    assert "--cookies" not in r.json()["detail"]
+
+
+def test_probe_internal_error_stays_generic(monkeypatch):
+    def fail(url):
+        raise OSError("/app/secret/path exploded")
+    monkeypatch.setattr("app.routes.probe.probe_heights", fail)
+    r = client.post("/api/formats", json={"url": "https://www.youtube.com/watch?v=abc"})
+    assert r.status_code == 400
+    assert "/app" not in r.json()["detail"]

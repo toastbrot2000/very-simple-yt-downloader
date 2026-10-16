@@ -17,6 +17,7 @@ from yt_dlp.utils import DownloadCancelled
 from app import probe
 from app.config import (
     ALLOWED_EXTRACTORS,
+    COOKIE_JAR,
     DOWNLOAD_DIR,
     FILE_TTL_SECONDS,
     MAX_CONCURRENT_DOWNLOADS,
@@ -33,6 +34,21 @@ download_semaphore = threading.Semaphore(MAX_CONCURRENT_DOWNLOADS)
 
 ACTIVE_STATUSES = {"queued", "starting", "downloading", "processing", "cancelling"}
 TERMINAL_STATUSES = {"finished", "error", "cancelled"}
+
+
+def error_message(e: Exception) -> str:
+    """user-facing text for a failed probe or download."""
+    if not isinstance(e, yt_dlp.utils.DownloadError):
+        # anything else may leak paths or internals
+        return "Download failed due to an internal server error."
+    # extractor messages ("Video unavailable", ...) are safe and useful
+    message = re.sub(r'\x1b\[[0-9;]*m', '', str(e))
+    message = re.sub(r'^ERROR:\s*', '', message)
+    if "not a bot" in message:
+        # yt-dlp's own hint is about cli flags, which a web user can't act on
+        return ("YouTube is blocking this server as a bot. Try again later; "
+                "if it keeps happening, the server admin can set COOKIES_FILE.")
+    return message
 
 
 def is_task_id(name: str) -> bool:
@@ -194,6 +210,8 @@ def run_download(task_id: str, url: str, format_type: str, quality: str = "best"
         'max_filesize': MAX_FILESIZE_MB * 1024 * 1024,
         'allowed_extractors': ALLOWED_EXTRACTORS,
     }
+    if COOKIE_JAR:
+        ydl_opts['cookiefile'] = COOKIE_JAR
 
     if format_type == 'mp3':
         ydl_opts.update({
@@ -311,16 +329,9 @@ def run_download(task_id: str, url: str, format_type: str, quality: str = "best"
             logger.exception(f"Error downloading {url} (task {task_id})")
             # drop partial files now rather than waiting for the stale sweep
             shutil.rmtree(out_dir, ignore_errors=True)
-            if isinstance(e, yt_dlp.utils.DownloadError):
-                # extractor messages ("Video unavailable", ...) are safe and useful
-                message = re.sub(r'\x1b\[[0-9;]*m', '', str(e))
-                message = re.sub(r'^ERROR:\s*', '', message)
-            else:
-                # anything else may leak paths or internals
-                message = "Download failed due to an internal server error."
             download_progress[task_id] = {
                 "status": "error",
                 "progress": 0,
-                "error": message,
+                "error": error_message(e),
                 "timestamp": time.time()
             }

@@ -4,7 +4,9 @@ FROM python:3.14-alpine3.24
 
 # Alpine's ffmpeg is musl-native, apk-maintained, and small (no Debian GUI tree).
 # Provides both ffmpeg and ffprobe, used by yt-dlp's FFmpeg postprocessors.
-RUN apk add --no-cache ffmpeg
+# deno is the JS runtime yt-dlp needs to solve youtube's player challenges
+# (with yt-dlp-ejs); without it youtube serves few or no formats.
+RUN apk add --no-cache ffmpeg deno
 
 # Pin build tooling so renewing the lockfile produces deterministic transitive deps.
 RUN pip install --no-cache-dir pip==26.1.2 setuptools==83.0.0 wheel==0.47.0

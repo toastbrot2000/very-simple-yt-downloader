@@ -80,6 +80,7 @@ All settings are environment variables. Copy `.env.example` to `.env` and adjust
 | `MAX_FILESIZE_MB` | `5120` | Max file size in MB (passed to yt-dlp `max_filesize`) |
 | `FILE_TTL_MINUTES` | `60` | Stale task/file cleanup age in minutes |
 | `ALLOWED_HOSTS` | (unset) | Comma-separated host allowlist; enables `TrustedHostMiddleware` for DNS-rebinding protection |
+| `COOKIES_FILE` | (unset) | Path to a Netscape-format `cookies.txt` passed to yt-dlp. Use it when YouTube answers "Sign in to confirm you're not a bot" (it flags server and shared IPs). Export the cookies from a throwaway account, since YouTube may ban accounts used this way, and mount the file read-only; the app works on a private copy |
 | `CSP_SCRIPT_SRC` | `'self'` | Content-Security-Policy `script-src` directive. Override to `'self' 'unsafe-inline'` if deploying behind a reverse proxy or CDN that injects inline scripts (like Cloudflare's Bot Fight Mode or analytics) |
 
 ## How it Works
@@ -94,7 +95,7 @@ All settings are environment variables. Copy `.env.example` to `.env` and adjust
 
 ## Nightly Builds
 
-A GitHub Actions workflow checks daily for new yt-dlp releases. When a new version is found, it automatically publishes a nightly image to both GHCR and Docker Hub. You can automatically check for updates using Watchtower / Keel or similar.
+A GitHub Actions workflow checks daily for new yt-dlp releases. When a new version is found, it automatically publishes a nightly image to GHCR (`ghcr.io/toastbrot2000/yt-dlp-web-gui`) and, when the `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` repo secrets are set, to Docker Hub. You can automatically check for updates using Watchtower / Keel or similar.
 
 ## Exposing to your LAN
 

@@ -1,9 +1,11 @@
 # Pinned dependency lockfile.
-# Direct dependencies: fastapi, uvicorn, yt-dlp, python-dotenv, requests
+# Direct dependencies: fastapi, uvicorn, yt-dlp, yt-dlp-ejs, python-dotenv, requests
 # (requests isn't imported by the app; yt-dlp prefers it as its HTTP backend when present)
+# yt-dlp-ejs holds the youtube challenge solver scripts run by deno (see Dockerfile);
+# keep it at the version yt-dlp pins in its "default" extra. nightly.yml bumps both.
 #
 # To update: in a FRESH venv run
-#   pip install fastapi uvicorn yt-dlp python-dotenv requests
+#   pip install fastapi uvicorn yt-dlp yt-dlp-ejs python-dotenv requests
 #   pip freeze > requirements.txt
 # then re-add this header. A fresh venv keeps dev tools (flake8 etc.) out of the
 # freeze; setuptools/wheel are additionally pinned in the Dockerfile.
@@ -30,3 +32,4 @@ urllib3==2.8.0
 uvicorn==0.49.0
 wheel==0.47.0
 yt-dlp==2026.8.19
+yt-dlp-ejs==0.8.0

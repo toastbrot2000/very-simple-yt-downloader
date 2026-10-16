@@ -16,4 +16,5 @@ services:
       - FILE_TTL_MINUTES=${FILE_TTL_MINUTES:-60}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-}
       - CSP_SCRIPT_SRC=${CSP_SCRIPT_SRC:-'self'}
+      - COOKIES_FILE=${COOKIES_FILE:-}
     restart: unless-stopped
